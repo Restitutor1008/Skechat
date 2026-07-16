@@ -13,6 +13,10 @@ void main() {
     expect(find.text('08:00'), findsOneWidget);
     expect(find.text('14:00'), findsOneWidget);
     expect(find.byIcon(Icons.calendar_month_rounded), findsOneWidget);
+    expect(find.byKey(const Key('chatInput')), findsOneWidget);
+    expect(find.text('일정에 대해 물어보세요'), findsOneWidget);
+    expect(find.byKey(const Key('sendMessageButton')), findsOneWidget);
+    expect(find.byIcon(Icons.add_rounded), findsNothing);
 
     await tester.tap(find.byKey(const Key('12HourButton')));
     await tester.pump();
@@ -45,5 +49,8 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('헬스장'), findsOneWidget);
     expect(find.text('치과 예약'), findsOneWidget);
+
+    final chatRect = tester.getRect(find.byKey(const Key('chatComposer')));
+    expect(chatRect.bottom, lessThanOrEqualTo(568));
   });
 }

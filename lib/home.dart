@@ -67,76 +67,89 @@ class _HomeState extends State<Home> {
             final topMargin = width >= 600 ? 36.0 : 20.0;
             final cardPadding = width >= 600 ? 32.0 : 20.0;
 
-            return SingleChildScrollView(
+            return Padding(
               padding: EdgeInsets.fromLTRB(
                 horizontalMargin,
                 topMargin,
                 horizontalMargin,
-                28,
+                12,
               ),
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.fromLTRB(
-                      cardPadding,
-                      cardPadding,
-                      cardPadding,
-                      cardPadding + 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(26),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x160F172A),
-                          blurRadius: 28,
-                          offset: Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _YearHeader(
-                          year: _selectedDate.year,
-                          onCalendarPressed: _openCalendar,
-                        ),
-                        const SizedBox(height: 10),
-                        _DateNavigation(
-                          date: _selectedDate,
-                          scheduleCount: _schedules.length,
-                          onPrevious: () => _moveDate(-1),
-                          onNext: () => _moveDate(1),
-                        ),
-                        const SizedBox(height: 18),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: _ClockFormatPicker(
-                            use24HourClock: _use24HourClock,
-                            onChanged: (value) {
-                              setState(() => _use24HourClock = value);
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ..._schedules.map(
-                          (schedule) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: _ScheduleCard(
-                              schedule: schedule,
-                              use24HourClock: _use24HourClock,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 420),
+                          child: Container(
+                            key: const Key('schedulePanel'),
+                            width: double.infinity,
+                            padding: EdgeInsets.fromLTRB(
+                              cardPadding,
+                              cardPadding,
+                              cardPadding,
+                              cardPadding + 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(26),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x160F172A),
+                                  blurRadius: 28,
+                                  offset: Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _YearHeader(
+                                  year: _selectedDate.year,
+                                  onCalendarPressed: _openCalendar,
+                                ),
+                                const SizedBox(height: 10),
+                                _DateNavigation(
+                                  date: _selectedDate,
+                                  scheduleCount: _schedules.length,
+                                  onPrevious: () => _moveDate(-1),
+                                  onNext: () => _moveDate(1),
+                                ),
+                                const SizedBox(height: 18),
+                                ..._schedules.map(
+                                  (schedule) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: _ScheduleCard(
+                                      schedule: schedule,
+                                      use24HourClock: _use24HourClock,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const _ScheduleHint(),
+                              ],
                             ),
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        const _ScheduleHint(),
-                      ],
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: _ChatComposer(
+                        use24HourClock: _use24HourClock,
+                        onClockFormatChanged: (value) {
+                          setState(() => _use24HourClock = value);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -297,7 +310,7 @@ class _ClockFormatPicker extends StatelessWidget {
             selected: use24HourClock,
             onTap: () => onChanged(true),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           _FormatCircle(
             key: const Key('12HourButton'),
             label: '12',
@@ -337,13 +350,13 @@ class _FormatCircle extends StatelessWidget {
             onTap: onTap,
             customBorder: const CircleBorder(),
             child: SizedBox.square(
-              dimension: 40,
+              dimension: 32,
               child: Center(
                 child: Text(
                   label,
                   style: TextStyle(
                     color: selected ? Colors.white : const Color(0xFF777780),
-                    fontSize: 13,
+                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -499,6 +512,86 @@ class _ScheduleHint extends StatelessWidget {
                 fontSize: 11,
                 height: 1.45,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatComposer extends StatelessWidget {
+  const _ChatComposer({
+    required this.use24HourClock,
+    required this.onClockFormatChanged,
+  });
+
+  final bool use24HourClock;
+  final ValueChanged<bool> onClockFormatChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('chatComposer'),
+      padding: const EdgeInsets.fromLTRB(8, 7, 7, 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: const Color(0xFFE9E9ED)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x190F172A),
+            blurRadius: 22,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _ClockFormatPicker(
+            use24HourClock: use24HourClock,
+            onChanged: onClockFormatChanged,
+          ),
+          const SizedBox(width: 8),
+          Container(width: 1, height: 24, color: const Color(0xFFE7E7EB)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              key: const Key('chatInput'),
+              minLines: 1,
+              maxLines: 3,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) {},
+              style: const TextStyle(
+                color: Color(0xFF2A2A30),
+                fontSize: 14,
+                height: 1.3,
+              ),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'Sketch your day with SkeChat!',
+                hintStyle: TextStyle(color: Color(0xFFA3A2AA), fontSize: 13),
+                contentPadding: EdgeInsets.symmetric(vertical: 11),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Semantics(
+            button: true,
+            label: '메시지 보내기',
+            child: IconButton(
+              key: const Key('sendMessageButton'),
+              onPressed: () {},
+              tooltip: '보내기',
+              style: IconButton.styleFrom(
+                fixedSize: const Size.square(42),
+                minimumSize: const Size.square(42),
+                backgroundColor: const Color(0xFF1AA36F),
+                foregroundColor: Colors.white,
+                shape: const CircleBorder(),
+              ),
+              icon: const Icon(Icons.arrow_upward_rounded, size: 21),
             ),
           ),
         ],
