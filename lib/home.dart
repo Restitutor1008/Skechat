@@ -34,8 +34,8 @@ class _HomeState extends State<Home> {
     final date = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
+      firstDate: DateTime(DateTime.now().year - 10),
+      lastDate: DateTime(DateTime.now().year + 10),
       helpText: '날짜 선택',
       cancelText: '취소',
       confirmText: '확인',
