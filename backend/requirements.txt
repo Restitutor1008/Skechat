@@ -1,0 +1,11 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+sqlalchemy>=2.0,<3
+pymysql>=1.1,<2
+python-dotenv>=1.0,<2
+httpx>=0.28,<1
+mcp>=1.9,<2
+alembic>=1.14,<2
+pytest>=8,<9
+tzdata>=2025.2
+argon2-cffi>=23,<26

@@ -1,0 +1,1 @@
+"""SkeChat REST API package."""
