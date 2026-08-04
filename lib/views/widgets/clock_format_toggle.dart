@@ -12,50 +12,67 @@ class ClockFormatToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = use24HourClock ? '24h' : '12h';
+    final label = use24HourClock ? '24시간' : '오전·오후';
     return Semantics(
       button: true,
-      label: '시간 표시 형식 $label',
+      label: '시간 표시 방식 $label',
       onTap: () => onChanged(!use24HourClock),
       child: Tooltip(
-        message: '$label 시간 형식',
+        message: '$label 시간 표시',
         child: InkWell(
           key: const Key('clockFormatToggle'),
           onTap: () => onChanged(!use24HourClock),
           borderRadius: BorderRadius.circular(18),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-            child: Column(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 160),
-                  child: Text(
-                    label,
-                    key: ValueKey(label),
-                    style: const TextStyle(
-                      color: Color(0xFF626269),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
+                SizedBox(
+                  width: 58,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 360),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.25),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: Text(
+                      label,
+                      key: ValueKey(label),
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        color: Color(0xFF626269),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(width: 8),
                 Container(
-                  width: 46,
-                  height: 25,
+                  width: 48,
+                  height: 26,
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1AA36F),
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: AnimatedAlign(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeInOutCubic,
                     alignment: use24HourClock
                         ? Alignment.centerRight
                         : Alignment.centerLeft,
                     child: const DecoratedBox(
+                      key: Key('clockFormatThumb'),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
@@ -67,7 +84,7 @@ class ClockFormatToggle extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: SizedBox.square(dimension: 19),
+                      child: SizedBox.square(dimension: 20),
                     ),
                   ),
                 ),

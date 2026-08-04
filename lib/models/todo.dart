@@ -1,125 +1,105 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+part 'todo.freezed.dart';
+part 'todo.g.dart';
+
 DateTime parseScheduleDateTime(String value) {
   final wallClock = value.length >= 19 ? value.substring(0, 19) : value;
   return DateTime.parse(wallClock);
 }
 
-class Todo {
-  const Todo({
-    required this.id,
-    required this.eta,
-    required this.description,
-    required this.user,
-    required this.alarm,
-    required this.location,
-    this.isCompleted = false,
-  });
+class ScheduleDateTimeConverter implements JsonConverter<DateTime?, String?> {
+  const ScheduleDateTimeConverter();
 
-  final int id;
-  final DateTime eta;
-  final String description;
-  final ScheduleUser user;
-  final ScheduleAlarm alarm;
-  final ScheduleLocation? location;
-  final bool isCompleted;
+  @override
+  DateTime? fromJson(String? value) {
+    if (value case final String text) return parseScheduleDateTime(text);
+    return null;
+  }
 
-  DateTime get scheduledAt => eta;
+  @override
+  String? toJson(DateTime? value) => value?.toIso8601String();
+}
+
+class ScheduleDateConverter implements JsonConverter<DateTime?, String?> {
+  const ScheduleDateConverter();
+
+  @override
+  DateTime? fromJson(String? value) {
+    if (value case final String text) return DateTime.parse(text);
+    return null;
+  }
+
+  @override
+  String? toJson(DateTime? value) => value?.toIso8601String().substring(0, 10);
+}
+
+Object? readScheduleDate(Map<dynamic, dynamic> json, String key) {
+  final value = json[key];
+  if (value != null) return value;
+  final eta = json['eta'] as String?;
+  return eta?.substring(0, 10);
+}
+
+@Freezed(toJson: false)
+abstract class Todo with _$Todo {
+  const Todo._();
+
+  const factory Todo({
+    required int id,
+    @ScheduleDateTimeConverter() required DateTime? eta,
+    @JsonKey(name: 'scheduled_date', readValue: readScheduleDate)
+    @ScheduleDateConverter()
+    DateTime? scheduledDate,
+    @Default('') String description,
+    required ScheduleUser user,
+    required ScheduleAlarm alarm,
+    required ScheduleLocation? location,
+    @JsonKey(name: 'is_completed') @Default(false) bool isCompleted,
+  }) = _Todo;
+
+  factory Todo.fromJson(Map<String, dynamic> json) => _$TodoFromJson(json);
+
+  DateTime get scheduledAt => eta ?? scheduledDate ?? DateTime(1970);
+  bool get hasTime => eta != null;
   String get title => description.isEmpty ? '일정 #$id' : description;
-
-  Todo copyWith({
-    DateTime? eta,
-    String? description,
-    ScheduleAlarm? alarm,
-    bool? isCompleted,
-  }) => Todo(
-    id: id,
-    eta: eta ?? this.eta,
-    description: description ?? this.description,
-    user: user,
-    alarm: alarm ?? this.alarm,
-    location: location,
-    isCompleted: isCompleted ?? this.isCompleted,
-  );
-
-  factory Todo.fromJson(Map<String, dynamic> json) => Todo(
-    id: json['id'] as int,
-    eta: parseScheduleDateTime(json['eta'] as String),
-    description: (json['description'] as String?) ?? '',
-    user: ScheduleUser.fromJson(json['user'] as Map<String, dynamic>),
-    alarm: ScheduleAlarm.fromJson(json['alarm'] as Map<String, dynamic>),
-    location: json['location'] == null
-        ? null
-        : ScheduleLocation.fromJson(json['location'] as Map<String, dynamic>),
-    isCompleted: (json['is_completed'] as bool?) ?? false,
-  );
 }
 
-class ScheduleUser {
-  const ScheduleUser({
-    required this.userId,
-    required this.userName,
-    required this.phoneNumber,
-  });
+@Freezed(toJson: false)
+abstract class ScheduleUser with _$ScheduleUser {
+  const factory ScheduleUser({
+    @JsonKey(name: 'user_id') required String userId,
+    @JsonKey(name: 'user_name') required String userName,
+    @JsonKey(name: 'phone_number') required String phoneNumber,
+  }) = _ScheduleUser;
 
-  final String userId;
-  final String userName;
-  final String phoneNumber;
-
-  factory ScheduleUser.fromJson(Map<String, dynamic> json) => ScheduleUser(
-    userId: json['user_id'] as String,
-    userName: json['user_name'] as String,
-    phoneNumber: json['phone_number'] as String,
-  );
+  factory ScheduleUser.fromJson(Map<String, dynamic> json) =>
+      _$ScheduleUserFromJson(json);
 }
 
-class ScheduleAlarm {
-  const ScheduleAlarm({
-    required this.alarmId,
-    required this.alarmMusic,
-    required this.alarmText,
-    required this.minutesBefore,
-  });
+@Freezed(toJson: false)
+abstract class ScheduleAlarm with _$ScheduleAlarm {
+  const factory ScheduleAlarm({
+    @JsonKey(name: 'alarm_id') required String alarmId,
+    @JsonKey(name: 'alarm_music') required String? alarmMusic,
+    @JsonKey(name: 'alarm_text') required String? alarmText,
+    @JsonKey(name: 'minutes_before') required int minutesBefore,
+  }) = _ScheduleAlarm;
 
-  final String alarmId;
-  final String? alarmMusic;
-  final String? alarmText;
-  final int minutesBefore;
-
-  ScheduleAlarm copyWith({int? minutesBefore}) => ScheduleAlarm(
-    alarmId: alarmId,
-    alarmMusic: alarmMusic,
-    alarmText: alarmText,
-    minutesBefore: minutesBefore ?? this.minutesBefore,
-  );
-
-  factory ScheduleAlarm.fromJson(Map<String, dynamic> json) => ScheduleAlarm(
-    alarmId: json['alarm_id'] as String,
-    alarmMusic: json['alarm_music'] as String?,
-    alarmText: json['alarm_text'] as String?,
-    minutesBefore: (json['minutes_before'] as num).toInt(),
-  );
+  factory ScheduleAlarm.fromJson(Map<String, dynamic> json) =>
+      _$ScheduleAlarmFromJson(json);
 }
 
-class ScheduleLocation {
-  const ScheduleLocation({
-    required this.locationId,
-    required this.name,
-    required this.latitude,
-    required this.longitude,
-    required this.sourceId,
-  });
-
-  final int locationId;
-  final String name;
-  final double latitude;
-  final double longitude;
-  final int sourceId;
+@Freezed(toJson: false)
+abstract class ScheduleLocation with _$ScheduleLocation {
+  const factory ScheduleLocation({
+    @JsonKey(name: 'location_id') required int locationId,
+    required String name,
+    required double latitude,
+    required double longitude,
+    @JsonKey(name: 'source_id') required int sourceId,
+  }) = _ScheduleLocation;
 
   factory ScheduleLocation.fromJson(Map<String, dynamic> json) =>
-      ScheduleLocation(
-        locationId: (json['location_id'] as num).toInt(),
-        name: json['name'] as String,
-        latitude: (json['latitude'] as num).toDouble(),
-        longitude: (json['longitude'] as num).toDouble(),
-        sourceId: json['source_id'] as int,
-      );
+      _$ScheduleLocationFromJson(json);
 }

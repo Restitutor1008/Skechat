@@ -4,14 +4,22 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from .config import get_settings
+from .config import get_settings, read_database_password
 
 
 settings = get_settings()
 engine = create_engine(settings.database_url, pool_pre_ping=True)
+
+
+@event.listens_for(engine, "do_connect")
+def _use_current_database_password(_, __, ___, connection_parameters):
+    """Use a newly rotated password whenever the pool opens a connection."""
+    connection_parameters["password"] = read_database_password()
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

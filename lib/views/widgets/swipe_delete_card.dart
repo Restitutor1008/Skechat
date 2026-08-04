@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 class SwipeDeleteCard extends StatefulWidget {
@@ -17,68 +19,25 @@ class SwipeDeleteCard extends StatefulWidget {
 }
 
 class _SwipeDeleteCardState extends State<SwipeDeleteCard> {
-  static const _actionWidth = 76.0;
-  double _offset = 0;
-  bool _dragging = false;
-
-  void _onDragUpdate(DragUpdateDetails details) {
-    setState(() {
-      _dragging = true;
-      _offset = (_offset + details.delta.dx).clamp(-_actionWidth, 0);
-    });
-  }
-
-  void _onDragEnd(DragEndDetails details) {
-    setState(() {
-      _dragging = false;
-      _offset = _offset.abs() >= _actionWidth * 0.45 ? -_actionWidth : 0;
-    });
-  }
-
-  Future<void> _delete() async {
-    setState(() => _offset = 0);
-    await widget.onDelete();
-  }
+  double _dismissProgress = 0;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Container(
-                width: _actionWidth,
-                color: const Color(0xFFE5484D),
-                child: IconButton(
-                  key: Key('swipeDelete-${widget.itemId}'),
-                  onPressed: _delete,
-                  tooltip: '일정 삭제',
-                  color: Colors.white,
-                  icon: const Icon(Icons.delete_outline_rounded),
-                ),
-              ),
-            ),
-          ),
-          IgnorePointer(
-            ignoring: !_dragging && _offset < 0,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: _onDragUpdate,
-              onHorizontalDragEnd: _onDragEnd,
-              child: AnimatedContainer(
-                duration: _dragging
-                    ? Duration.zero
-                    : const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                transform: Matrix4.translationValues(_offset, 0, 0),
-                child: widget.child,
-              ),
-            ),
-          ),
-        ],
+    return Dismissible(
+      key: Key('swipeDelete-${widget.itemId}'),
+      direction: DismissDirection.endToStart,
+      dismissThresholds: const {DismissDirection.endToStart: 0.42},
+      movementDuration: const Duration(milliseconds: 240),
+      resizeDuration: const Duration(milliseconds: 220),
+      background: const SizedBox.expand(),
+      onUpdate: (details) {
+        if (_dismissProgress == details.progress) return;
+        setState(() => _dismissProgress = details.progress);
+      },
+      onDismissed: (_) => unawaited(widget.onDelete()),
+      child: Opacity(
+        opacity: (1 - (_dismissProgress * 1.15)).clamp(0, 1),
+        child: widget.child,
       ),
     );
   }

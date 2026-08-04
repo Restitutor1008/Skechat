@@ -7,12 +7,18 @@ class ChatComposer extends StatefulWidget {
     required this.onSend,
     required this.onChanged,
     required this.clearRevision,
+    required this.replacementRevision,
+    required this.replacementText,
+    required this.hintText,
   });
 
   final bool isSending;
   final ValueChanged<String> onSend;
   final ValueChanged<String> onChanged;
   final int clearRevision;
+  final int replacementRevision;
+  final String replacementText;
+  final String hintText;
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
@@ -26,6 +32,13 @@ class _ChatComposerState extends State<ChatComposer> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.clearRevision != widget.clearRevision) {
       _controller.clear();
+    } else if (oldWidget.replacementRevision != widget.replacementRevision) {
+      _controller.value = TextEditingValue(
+        text: widget.replacementText,
+        selection: TextSelection.collapsed(
+          offset: widget.replacementText.length,
+        ),
+      );
     }
   }
 
@@ -62,14 +75,13 @@ class _ChatComposerState extends State<ChatComposer> {
       child: TextField(
         key: const Key('chatInput'),
         controller: _controller,
-        enabled: !widget.isSending,
         maxLines: 3,
         minLines: 1,
         textInputAction: TextInputAction.send,
         onChanged: widget.onChanged,
         onSubmitted: (_) => _submit(),
-        decoration: const InputDecoration(
-          hintText: '일정을 자연어로 입력하세요',
+        decoration: InputDecoration(
+          hintText: widget.hintText,
           border: InputBorder.none,
           isDense: true,
           contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 11),
@@ -86,7 +98,7 @@ class AnimatedOkButton extends StatefulWidget {
     this.isBusy = false,
   });
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool isBusy;
 
   @override
@@ -127,15 +139,19 @@ class _AnimatedOkButtonState extends State<AnimatedOkButton>
       begin: const Color(0xFF7187E8),
       end: const Color(0xFF8A70D6),
     ).animate(_controller);
-    if (!widget.isBusy) _controller.repeat(reverse: true);
+    if (!widget.isBusy && widget.onPressed != null) {
+      _controller.repeat(reverse: true);
+    }
   }
 
   @override
   void didUpdateWidget(covariant AnimatedOkButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isBusy && !widget.isBusy) {
+    if ((oldWidget.isBusy || oldWidget.onPressed == null) &&
+        !widget.isBusy &&
+        widget.onPressed != null) {
       _controller.repeat(reverse: true);
-    } else if (!oldWidget.isBusy && widget.isBusy) {
+    } else if (widget.isBusy || widget.onPressed == null) {
       _controller.stop();
     }
   }
@@ -149,7 +165,7 @@ class _AnimatedOkButtonState extends State<AnimatedOkButton>
   @override
   Widget build(BuildContext context) {
     return ScaleTransition(
-      key: const Key('confirmPreviewButton'),
+      key: widget.key == null ? const Key('confirmPreviewButton') : null,
       scale: _scale,
       child: AnimatedBuilder(
         animation: _controller,
@@ -160,7 +176,7 @@ class _AnimatedOkButtonState extends State<AnimatedOkButton>
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: widget.isBusy
+              colors: widget.isBusy || widget.onPressed == null
                   ? const [Color(0xFF9DBCB1), Color(0xFFA7ADC5)]
                   : [_startColor.value!, _endColor.value!],
             ),

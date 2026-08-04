@@ -10,6 +10,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    event,
     ForeignKey,
     Index,
     Integer,
@@ -99,6 +100,55 @@ class LoginHistory(Base):
     user: Mapped[User] = relationship()
 
 
+class Holiday(Base):
+    __tablename__ = "holidays"
+    __table_args__ = (
+        Index("ix_holidays_country_updated", "country_code", "updated_at"),
+        Index("ix_holidays_country_obsolete_date", "country_code", "is_obsolete", "holiday_date"),
+    )
+
+    country_code: Mapped[str] = mapped_column(String(2), primary_key=True)
+    holiday_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description_ko: Mapped[str | None] = mapped_column(String(255))
+    description_en: Mapped[str | None] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(20), default="NATIONAL", nullable=False)
+    is_substitute: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_obsolete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+
+class SyncBatch(Base):
+    """Idempotency receipt and privacy-safe audit record for an offline batch."""
+
+    __tablename__ = "sync_batches"
+    __table_args__ = (
+        Index("ix_sync_batches_user_created", "user_id", "created_at"),
+        Index("ix_sync_batches_status_expires", "status", "expires_at"),
+    )
+
+    batch_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    operation_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    result_payload: Mapped[dict | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    user: Mapped[User] = relationship()
+
+
 class RoutineFrequency(str, PythonEnum):
     DAILY = "DAILY"
     WEEKLY = "WEEKLY"
@@ -179,17 +229,26 @@ class Routine(Base):
 class Schedule(Base):
     __tablename__ = "schedules"
     __table_args__ = (
-        Index("ix_schedules_obsolete_scheduled", "is_obsolete", "scheduled_at"),
+        Index(
+            "ix_schedules_user_obsolete_date_time",
+            "user_id",
+            "is_obsolete",
+            "scheduled_date",
+            "scheduled_at",
+        ),
+        Index("ix_schedules_obsolete_scheduled", "is_obsolete", "scheduled_date", "scheduled_at"),
         Index(
             "ix_schedules_user_obsolete_scheduled",
             "user_id",
             "is_obsolete",
+            "scheduled_date",
             "scheduled_at",
         ),
         Index(
             "ix_schedules_user_completed_scheduled",
             "user_id",
             "is_completed",
+            "scheduled_date",
             "scheduled_at",
         ),
         CheckConstraint(
@@ -204,7 +263,8 @@ class Schedule(Base):
         primary_key=True,
         autoincrement=True,
     )
-    scheduled_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    scheduled_date: Mapped[date] = mapped_column(Date, nullable=False)
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Seoul", nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.user_id"), nullable=False)
@@ -228,6 +288,13 @@ class Schedule(Base):
     alarm: Mapped[Alarm] = relationship(lazy="joined")
     location: Mapped[Location | None] = relationship(lazy="joined")
     routine: Mapped[Routine | None] = relationship(back_populates="schedules")
+
+
+@event.listens_for(Schedule, "before_insert")
+@event.listens_for(Schedule, "before_update")
+def _derive_schedule_date(_mapper, _connection, target: Schedule) -> None:
+    if target.scheduled_date is None and target.scheduled_at is not None:
+        target.scheduled_date = target.scheduled_at.date()
 
 
 class ScheduleOperation(Base):

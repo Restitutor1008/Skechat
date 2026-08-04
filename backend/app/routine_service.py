@@ -1,7 +1,11 @@
+from datetime import datetime, time, timedelta
+from uuid import uuid4
+
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from .models import Routine, Schedule, User
+from .models import Alarm, Routine, Schedule, User
+from .occurrence_service import get_occurrences
 from .schemas import RoutineCreate, RoutineUpdate
 
 
@@ -43,13 +47,46 @@ def get_routine(db: Session, routine_id: int, user_id: str) -> Routine:
     return routine
 
 
-def create_routine(db: Session, user_id: str, data: RoutineCreate) -> Routine:
+def create_routine(
+    db: Session, user_id: str, data: RoutineCreate, *, commit: bool = True
+) -> Routine:
     if db.get(User, user_id) is None:
         raise UserNotFoundError
     routine = Routine(user_id=user_id, **_values(data))
     db.add(routine)
-    db.commit()
-    db.refresh(routine)
+    db.flush()
+    range_start = datetime.combine(data.start_date, time.min)
+    range_end = range_start + timedelta(days=366)
+    for occurrence in get_occurrences(routine, range_start, range_end):
+        alarm = Alarm(
+            alarm_id=f"routine-{uuid4()}",
+            alarm_music=None,
+            alarm_text=data.name,
+            minutes_before=10,
+        )
+        db.add(alarm)
+        db.flush()
+        db.add(
+            Schedule(
+                scheduled_date=occurrence.date(),
+                scheduled_at=(
+                    occurrence.replace(tzinfo=None)
+                    if data.start_time is not None
+                    else None
+                ),
+                timezone=data.timezone,
+                description=data.description or data.name,
+                user_id=user_id,
+                alarm_id=alarm.alarm_id,
+                routine_id=routine.id,
+                is_obsolete=False,
+            )
+        )
+    if commit:
+        db.commit()
+        db.refresh(routine)
+    else:
+        db.flush()
     return routine
 
 
@@ -83,7 +120,9 @@ def update_routine(
     return routine
 
 
-def delete_routine(db: Session, routine_id: int, user_id: str) -> None:
+def delete_routine(
+    db: Session, routine_id: int, user_id: str, *, commit: bool = True
+) -> None:
     routine = get_routine(db, routine_id, user_id)
     db.execute(
         update(Schedule)
@@ -95,4 +134,7 @@ def delete_routine(db: Session, routine_id: int, user_id: str) -> None:
         )
     )
     db.delete(routine)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()

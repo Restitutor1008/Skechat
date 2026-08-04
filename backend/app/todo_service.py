@@ -1,13 +1,16 @@
 from datetime import date, datetime, time, timedelta
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Routine, Schedule
+from .models import Alarm, Location, Routine, Schedule, User
 from .schemas import (
     AlarmRead,
     LocationRead,
+    OfflineTodoCreate,
+    OfflineTodoUpdate,
     TodoCreate,
     TodoRead,
     TodoUpdate,
@@ -36,6 +39,7 @@ def assemble_todo(schedule: Schedule) -> TodoRead:
     return TodoRead(
         id=schedule.schedule_id,
         eta=_to_api(schedule.scheduled_at, schedule.timezone),
+        scheduled_date=schedule.scheduled_date,
         description=schedule.description or "",
         user=UserSummary(
             user_id=schedule.user.user_id,
@@ -80,6 +84,24 @@ def _validate_routine_owner(
         raise ValueError("routine_id must belong to the schedule user")
 
 
+def _validate_references(
+    db: Session,
+    *,
+    user_id: str,
+    alarm_id: str,
+    location_id: int | None,
+) -> None:
+    if db.get(User, user_id) is None:
+        raise ValueError("user_id does not exist")
+    alarm = db.get(Alarm, alarm_id)
+    if alarm is None or alarm.is_obsolete:
+        raise ValueError("alarm_id is not available")
+    if location_id is not None:
+        location = db.get(Location, location_id)
+        if location is None or location.is_obsolete:
+            raise ValueError("location_id is not available")
+
+
 def list_todos(
     db: Session,
     target_date: date | None = None,
@@ -89,12 +111,12 @@ def list_todos(
     if user_id is not None:
         query = query.where(Schedule.user_id == user_id)
     if target_date:
-        start = datetime.combine(target_date, time.min)
-        query = query.where(
-            Schedule.scheduled_at >= start,
-            Schedule.scheduled_at < start + timedelta(days=1),
-        )
-    return list(db.scalars(query.order_by(Schedule.scheduled_at)).unique())
+        query = query.where(Schedule.scheduled_date == target_date)
+    return list(
+        db.scalars(
+            query.order_by(Schedule.scheduled_at.is_(None), Schedule.scheduled_at)
+        ).unique()
+    )
 
 
 def list_deleted_todos(db: Session, user_id: str) -> list[Schedule]:
@@ -109,13 +131,42 @@ def list_deleted_todos(db: Session, user_id: str) -> list[Schedule]:
     return list(db.scalars(query).unique())
 
 
+def list_changed_todos(
+    db: Session,
+    user_id: str,
+    *,
+    updated_after: datetime | None,
+    updated_through: datetime,
+) -> list[Schedule]:
+    query = select(Schedule).where(
+        Schedule.user_id == user_id,
+        Schedule.updated_at <= updated_through,
+    )
+    if updated_after is not None:
+        query = query.where(Schedule.updated_at > updated_after)
+    return list(
+        db.scalars(query.order_by(Schedule.updated_at, Schedule.schedule_id)).unique()
+    )
+
+
 def create_todo(
-    db: Session, data: TodoCreate, *, commit: bool = True
+    db: Session,
+    data: TodoCreate,
+    *,
+    schedule_id: int | None = None,
+    commit: bool = True,
 ) -> Schedule:
     _validate_routine_owner(db, data.routine_id, data.user_id)
+    _validate_references(
+        db,
+        user_id=data.user_id,
+        alarm_id=data.alarm_id,
+        location_id=data.location_id,
+    )
     schedule = Schedule(
-        schedule_id=data.schedule_id,
-        scheduled_at=_to_storage(data.eta),
+        schedule_id=schedule_id,
+        scheduled_date=data.scheduled_date,
+        scheduled_at=_to_storage(data.eta) if data.eta is not None else None,
         timezone=DEFAULT_TIMEZONE,
         description=data.description,
         user_id=data.user_id,
@@ -132,6 +183,42 @@ def create_todo(
         is_exception=data.is_exception,
     )
     db.add(schedule)
+    if commit:
+        db.commit()
+        db.refresh(schedule)
+    else:
+        db.flush()
+    return schedule
+
+
+def create_offline_todo(
+    db: Session,
+    data: OfflineTodoCreate,
+    user_id: str,
+    *,
+    commit: bool = True,
+) -> Schedule:
+    alarm = Alarm(
+        alarm_id=f"offline-{uuid4()}",
+        alarm_music=None,
+        alarm_text=data.description,
+        minutes_before=data.alarm_minutes_before,
+    )
+    db.add(alarm)
+    db.flush()
+    schedule = create_todo(
+        db,
+        TodoCreate(
+            eta=data.eta,
+            scheduled_date=data.scheduled_date,
+            description=data.description,
+            user_id=user_id,
+            alarm_id=alarm.alarm_id,
+            location_id=data.location_id,
+            is_completed=data.is_completed,
+        ),
+        commit=False,
+    )
     if commit:
         db.commit()
         db.refresh(schedule)
@@ -163,10 +250,21 @@ def update_todo(
     changes = data.model_dump(exclude_unset=True)
     target_routine_id = changes.get("routine_id", schedule.routine_id)
     _validate_routine_owner(db, target_routine_id, schedule.user_id)
+    target_alarm_id = changes.get("alarm_id", schedule.alarm_id)
+    target_location_id = changes.get("location_id", schedule.location_id)
+    _validate_references(
+        db,
+        user_id=schedule.user_id,
+        alarm_id=target_alarm_id,
+        location_id=target_location_id,
+    )
     if "eta" in changes:
         eta = changes.pop("eta")
-        if eta is not None:
-            changes["scheduled_at"] = _to_storage(eta, schedule.timezone)
+        changes["scheduled_at"] = (
+            _to_storage(eta, schedule.timezone) if eta is not None else None
+        )
+        if eta is not None and "scheduled_date" not in changes:
+            changes["scheduled_date"] = eta.date()
     if (
         "original_scheduled_at" in changes
         and changes["original_scheduled_at"] is not None
@@ -184,6 +282,46 @@ def update_todo(
         )
     for field, value in changes.items():
         setattr(schedule, field, value)
+    if commit:
+        db.commit()
+        db.refresh(schedule)
+    else:
+        db.flush()
+    return schedule
+
+
+def update_offline_todo(
+    db: Session,
+    todo_id: int,
+    data: OfflineTodoUpdate,
+    user_id: str,
+    *,
+    commit: bool = True,
+) -> Schedule | None:
+    schedule = find_schedule(db, todo_id, user_id)
+    if schedule is None:
+        return None
+    changes = data.model_dump(exclude_unset=True)
+    alarm_minutes = changes.pop("alarm_minutes_before", None)
+    update_todo(
+        db,
+        todo_id,
+        TodoUpdate.model_validate(changes),
+        user_id,
+        commit=False,
+    ) if changes else None
+    if alarm_minutes is not None:
+        alarm = Alarm(
+            alarm_id=f"offline-{uuid4()}",
+            alarm_music=schedule.alarm.alarm_music,
+            alarm_text=changes.get("description", schedule.description),
+            minutes_before=alarm_minutes,
+        )
+        db.add(alarm)
+        db.flush()
+        schedule.alarm_id = alarm.alarm_id
+        schedule.alarm = alarm
+        schedule.updated_at = datetime.now()
     if commit:
         db.commit()
         db.refresh(schedule)
@@ -210,13 +348,22 @@ def delete_todo(
     return True
 
 
-def restore_todo(db: Session, todo_id: int, user_id: str) -> Schedule | None:
+def restore_todo(
+    db: Session,
+    todo_id: int,
+    user_id: str,
+    *,
+    commit: bool = True,
+) -> Schedule | None:
     schedule = find_schedule(db, todo_id, user_id)
     if schedule is None or not schedule.is_obsolete:
         return None
     schedule.is_obsolete = False
     if schedule.alarm is not None:
         schedule.alarm.is_obsolete = False
-    db.commit()
-    db.refresh(schedule)
+    if commit:
+        db.commit()
+        db.refresh(schedule)
+    else:
+        db.flush()
     return schedule
